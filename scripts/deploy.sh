@@ -63,11 +63,30 @@ if [ "${DEPLOY_AIO}" != false ]; then
     # RO-3316 has been resolved.
     openstack-ansible -i 'localhost,' \
                       -e 'apt_target_group=localhost' \
+                      -e 'apt_artifact_mode="${RPCO_APT_ARTIFACTS_MODE}"' \
                       -e 'container_artifact_enabled=false' \
                       "${SCRIPT_PATH}/../playbooks/site-artifacts.yml"
 
     # Install OpenStack-Ansible
     openstack-ansible "${SCRIPT_PATH}/../playbooks/openstack-ansible-install.yml"
+
+    # Set the AIO config bootstrap options
+    apt_artifact_enabled=$(awk '/apt_artifact_enabled/ {print $3}' /etc/ansible/facts.d/rpc_openstack.fact)
+    if [[ "${apt_artifact_enabled}" == "True" ]]; then
+      if [[ "${RPCO_APT_ARTIFACTS_MODE}" == "strict" ]]; then
+        # Prevent the AIO bootstrap from re-implementing
+        # the updates, backports and UCA sources. We have
+        # to use parameters here as BOOTSTRAP_OPTS only
+        # accepts string value parameters and the suffix
+        # parameter is a list.
+        echo -e '---\n{ "bootstrap_host_apt_distribution_suffix_list": [], "uca_enable": False }' > /opt/bootstrap-opts.yml
+        export ANSIBLE_PARAMETERS=-e@/opt/bootstrap-opts.yml
+      else
+        # Prevent the AIO bootstrap from re-implementing
+        # the UCA sources.
+        export BOOTSTRAP_OPTS='uca_enable="False"'
+      fi
+    fi
 
     ## Create the AIO
     pushd /opt/openstack-ansible
